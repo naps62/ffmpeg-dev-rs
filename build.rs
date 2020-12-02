@@ -1,13 +1,12 @@
 #![allow(unused)]
 
-use std::iter::FromIterator;
+use flate2::read::GzDecoder;
 use std::collections::HashSet;
 use std::convert::AsRef;
-use std::path::{PathBuf, Path};
+use std::iter::FromIterator;
+use std::path::{Path, PathBuf};
 use std::string::ToString;
 use tar::Archive;
-use flate2::read::GzDecoder;
-
 
 ///////////////////////////////////////////////////////////////////////////////
 // UTILS - ENVIROMENT
@@ -40,7 +39,10 @@ fn has_env_var_with_value(s: &str, v: &str) -> bool {
 // UTILS - BUILD
 ///////////////////////////////////////////////////////////////////////////////
 
-pub fn extract_tar_file<P: AsRef<Path>, Q: AsRef<Path>>(tar_file: P, dest: Q) -> Result<(), String> {
+pub fn extract_tar_file<P: AsRef<Path>, Q: AsRef<Path>>(
+    tar_file: P,
+    dest: Q,
+) -> Result<(), String> {
     let source = std::fs::read(tar_file).expect("read tar file");
     let tar = GzDecoder::new(&source[..]);
     let mut archive = Archive::new(tar);
@@ -63,7 +65,7 @@ pub fn extract_tar_file<P: AsRef<Path>, Q: AsRef<Path>>(tar_file: P, dest: Q) ->
 }
 
 pub fn lookup_newest(paths: Vec<PathBuf>) -> Option<PathBuf> {
-    use std::time::{SystemTime, Duration};
+    use std::time::{Duration, SystemTime};
     let mut newest: Option<(PathBuf, Duration)> = None;
     paths
         .clone()
@@ -76,7 +78,7 @@ pub fn lookup_newest(paths: Vec<PathBuf>) -> Option<PathBuf> {
                 .and_then(|x| x.duration_since(SystemTime::UNIX_EPOCH).ok());
             match timestamp {
                 Some(y) => Some((x, y)),
-                _ => None
+                _ => None,
             }
         })
         .for_each(|(x_path, x_created)| match &newest {
@@ -98,10 +100,7 @@ pub fn files_with_prefix(dir: &PathBuf, pattern: &str) -> Vec<PathBuf> {
         .expect(&format!("get dir contents: {:?}", dir))
         .filter_map(Result::ok)
         .filter_map(|x| {
-            let file_name = x
-                .file_name()
-                .to_str()?
-                .to_owned();
+            let file_name = x.file_name().to_str()?.to_owned();
             if file_name.starts_with(pattern) {
                 Some(x.path())
             } else {
@@ -123,12 +122,11 @@ fn run_make(source_path: &PathBuf, makefile: &str) {
 }
 
 fn cpy<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) {
-    std::fs::copy(&from, &to)
-        .expect(&format!(
-            "unable to cpy from {:?} to {:?}",
-            from.as_ref(),
-            to.as_ref(),
-        ));
+    std::fs::copy(&from, &to).expect(&format!(
+        "unable to cpy from {:?} to {:?}",
+        from.as_ref(),
+        to.as_ref(),
+    ));
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -136,34 +134,13 @@ fn cpy<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) {
 ///////////////////////////////////////////////////////////////////////////////
 
 pub const STATIC_LIBS: &[(&str, &str)] = &[
-    (
-        "avcodec",
-        "libavcodec/libavcodec.a",
-    ),
-    (
-        "avdevice",
-        "libavdevice/libavdevice.a",
-    ),
-    (
-        "avfilter",
-        "libavfilter/libavfilter.a",
-    ),
-    (
-        "avformat",
-        "libavformat/libavformat.a",
-    ),
-    (
-        "avutil",
-        "libavutil/libavutil.a",
-    ),
-    (
-        "swresample",
-        "libswresample/libswresample.a",
-    ),
-    (
-        "swscale",
-        "libswscale/libswscale.a",
-    ),
+    ("avcodec", "libavcodec/libavcodec.a"),
+    ("avdevice", "libavdevice/libavdevice.a"),
+    ("avfilter", "libavfilter/libavfilter.a"),
+    ("avformat", "libavformat/libavformat.a"),
+    ("avutil", "libavutil/libavutil.a"),
+    ("swresample", "libswresample/libswresample.a"),
+    ("swscale", "libswscale/libswscale.a"),
 ];
 
 pub const SEARCH_PATHS: &[&str] = &[
@@ -196,14 +173,13 @@ impl bindgen::callbacks::ParseCallbacks for IgnoreMacros {
     }
 }
 
-
 ///////////////////////////////////////////////////////////////////////////////
 // BUILD PIPELINE
 ///////////////////////////////////////////////////////////////////////////////
 
 fn build() {
     let out_path = out_dir();
-    let source_path = out_path.join("FFmpeg-FFmpeg-2722fc2");
+    let source_path = out_path.join("FFmpeg-FFmpeg-26b4509690");
     // SPEED UP DEV - UNLESS IN RELASE MODE
     let already_built = {
         STATIC_LIBS
@@ -220,14 +196,14 @@ fn build() {
         {
             let result = std::process::Command::new("tar")
                 .arg("-xJf")
-                .arg("archive/FFmpeg-FFmpeg-2722fc2.tar.xz")
+                .arg("archive/FFmpeg-FFmpeg-26b4509690.tar.xz")
                 .arg("-C")
                 .arg(out_path.to_str().expect("PathBuf to str"))
                 .output()
                 .expect("tar decompression of ffmpeg source repo using xz (to fit the 10M crates limit)");
             assert!(result.status.success());
         }
-        assert!(source_path.exists());  
+        assert!(source_path.exists());
     }
     // BUILD CODE PHASE
     if skip_build == false {
@@ -237,6 +213,9 @@ fn build() {
                 "--disable-programs",
                 "--disable-doc",
                 "--disable-autodetect",
+                "--enable-avresample",
+                "--enable-gpl",
+                "--enable-libx265",
             ];
             // TRY TO SPEED THIS UP FOR DEV BUILDS
             if is_debug_mode() && opt_level_eq(0) {
@@ -250,8 +229,8 @@ fn build() {
                     .arg("-c")
                     .arg(&format!(
                         "cd {path} && ./configure {flags}",
-                        path=source_path.to_str().expect("PathBuf to str"),
-                        flags=flags,
+                        path = source_path.to_str().expect("PathBuf to str"),
+                        flags = flags,
                     ))
                     .output()
                     .expect(&format!("ffmpeg configure script"))
@@ -303,7 +282,10 @@ fn build() {
         }
     }
     // LINK
-    println!("cargo:rustc-link-search=native={}", source_path.to_str().expect("PathBuf to str"));
+    println!(
+        "cargo:rustc-link-search=native={}",
+        source_path.to_str().expect("PathBuf to str")
+    );
     for path in SEARCH_PATHS {
         println!("cargo:rustc-link-search=native={}", {
             source_path.join(path).to_str().expect("PathBuf as str")
@@ -318,16 +300,12 @@ fn build() {
         println!("rerun-if-changed=headers");
         let ffmpeg_headers = std::fs::read("headers").expect("unable to read headers file");
         let ffmpeg_headers = String::from_utf8(ffmpeg_headers).expect("invalid utf8 file");
-        let ffmpeg_headers = ffmpeg_headers
-            .lines()
-            .collect::<Vec<&str>>();
-        assert!(
-            ffmpeg_headers
-                .iter()
-                .map(|x| x.trim())
-                .all(|x| !x.is_empty())
-        );
-        
+        let ffmpeg_headers = ffmpeg_headers.lines().collect::<Vec<&str>>();
+        assert!(ffmpeg_headers
+            .iter()
+            .map(|x| x.trim())
+            .all(|x| !x.is_empty()));
+
         let gen_file_name = "bindings_ffmpeg.rs";
         let ignored_macros = IgnoreMacros(HashSet::from_iter(vec![
             String::from("FP_INFINITE"),
@@ -344,11 +322,14 @@ fn build() {
         // CONFIG
         if !skip_codegen {
             let codegen = bindgen::Builder::default();
-            let codegen = codegen.clang_arg(format!("-I{}", source_path.to_str().expect("PathBuf to str")));
+            let codegen = codegen.clang_arg(format!(
+                "-I{}",
+                source_path.to_str().expect("PathBuf to str")
+            ));
             let mut missing = Vec::new();
-            let codegen = ffmpeg_headers
-                .iter()
-                .fold(codegen, |codegen: bindgen::Builder, path: &&str| -> bindgen::Builder {
+            let codegen = ffmpeg_headers.iter().fold(
+                codegen,
+                |codegen: bindgen::Builder, path: &&str| -> bindgen::Builder {
                     let path: &str = path.clone();
                     let path: PathBuf = source_path.join(path);
                     let path: &str = path.to_str().expect("PathBuf to str");
@@ -358,7 +339,8 @@ fn build() {
                     } else {
                         codegen.header(path)
                     }
-                });
+                },
+            );
             if !missing.is_empty() {
                 panic!("missing headers: {:#?}", missing);
             }
@@ -377,9 +359,7 @@ fn build() {
     }
     // COMPILE CBITS
     cc::Build::new()
-        .include({
-            source_path.to_str().expect("PathBuf to str")
-        })
+        .include({ source_path.to_str().expect("PathBuf to str") })
         .file("cbits/defs.c")
         .file("cbits/img_utils.c")
         .compile("cbits");
@@ -390,6 +370,7 @@ fn build() {
 ///////////////////////////////////////////////////////////////////////////////
 
 fn main() {
-    
+    println!("cargo:rustc-link-search=/usr/lib");
+    println!("cargo:rustc-link-lib=x265");
     build();
 }
